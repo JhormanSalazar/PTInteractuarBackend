@@ -1,0 +1,319 @@
+openapi: 3.0.3
+info:
+  title: PT Interactuar — API de asignación de solicitudes TI
+  version: 1.0.0
+  description: >
+    API REST para gestionar la asignación de solicitudes de soporte TI a
+    técnicos. Todas las rutas viven bajo /api/v1. Los errores siguen el
+    formato RFC 9457 Problem Details.
+servers:
+  - url: /api/v1
+tags:
+  - name: solicitudes
+  - name: tecnicos
+  - name: tipos-servicio
+  - name: health
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Estado del servicio y de la base de datos
+      responses:
+        '200':
+          description: El servicio y la base de datos están disponibles
+        '503':
+          description: El servicio corre pero la base de datos no responde
+
+  /solicitudes:
+    get:
+      tags: [solicitudes]
+      summary: Listar solicitudes con filtros, búsqueda y paginación
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 10 } }
+        - { name: q, in: query, schema: { type: string }, description: Busca en título y solicitante }
+        - { name: estado, in: query, schema: { $ref: '#/components/schemas/Estado' } }
+        - { name: prioridad, in: query, schema: { $ref: '#/components/schemas/Prioridad' } }
+        - { name: tecnicoId, in: query, schema: { type: integer } }
+        - { name: tipoServicioId, in: query, schema: { type: integer } }
+        - { name: sort, in: query, schema: { type: string, enum: [fechaCreacion:asc, fechaCreacion:desc, titulo:asc, titulo:desc, prioridad:asc, prioridad:desc, estado:asc, estado:desc], default: 'fechaCreacion:desc' } }
+      responses:
+        '200':
+          description: Listado paginado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Solicitud' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '400':
+          description: Parámetros de consulta inválidos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+    post:
+      tags: [solicitudes]
+      summary: Crear una solicitud (nace en estado PENDIENTE)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSolicitud' }
+      responses:
+        '201':
+          description: Solicitud creada
+          headers:
+            Location: { schema: { type: string }, description: URL del recurso creado }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Solicitud' }
+        '400':
+          description: Validación fallida
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+        '422':
+          description: Referencia a un técnico o tipo de servicio inexistente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+  /solicitudes/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [solicitudes]
+      summary: Obtener una solicitud por id
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Solicitud' }
+        '404':
+          description: No existe
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+    put:
+      tags: [solicitudes]
+      summary: Reemplazar una solicitud completa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateSolicitud' }
+      responses:
+        '200':
+          description: Actualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Solicitud' }
+        '404':
+          description: No existe
+        '409':
+          description: Conflicto (por ejemplo, quitar el técnico a una solicitud ASIGNADA/EN_PROCESO)
+        '422':
+          description: Referencia a un técnico o tipo de servicio inexistente
+    delete:
+      tags: [solicitudes]
+      summary: Eliminar una solicitud
+      responses:
+        '204': { description: Eliminada, sin cuerpo }
+        '404': { description: No existe }
+
+  /solicitudes/{id}/estado:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    patch:
+      tags: [solicitudes]
+      summary: Cambiar el estado de una solicitud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [estado]
+              additionalProperties: false
+              properties:
+                estado: { $ref: '#/components/schemas/Estado' }
+                comentario: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Estado actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Solicitud' }
+        '404': { description: No existe }
+        '409': { description: 'Transición inválida: ASIGNADA/EN_PROCESO sin técnico asignado' }
+
+  /tecnicos:
+    get:
+      tags: [tecnicos]
+      summary: Catálogo de técnicos
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Tecnico' }
+
+  /tecnicos/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [tecnicos]
+      summary: Obtener un técnico por id
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tecnico' }
+        '404': { description: No existe }
+    delete:
+      tags: [tecnicos]
+      summary: Eliminar un técnico (falla si tiene solicitudes asociadas)
+      responses:
+        '204': { description: Eliminado, sin cuerpo }
+        '404': { description: No existe }
+        '409': { description: Tiene solicitudes asociadas }
+
+  /tipos-servicio:
+    get:
+      tags: [tipos-servicio]
+      summary: Catálogo de tipos de servicio
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TipoServicio' }
+
+  /tipos-servicio/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [tipos-servicio]
+      summary: Obtener un tipo de servicio por id
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TipoServicio' }
+        '404': { description: No existe }
+
+components:
+  schemas:
+    Estado:
+      type: string
+      enum: [PENDIENTE, ASIGNADA, EN_PROCESO, RESUELTA, CANCELADA]
+    Prioridad:
+      type: string
+      enum: [BAJA, MEDIA, ALTA, CRITICA]
+    PaginationMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+    Tecnico:
+      type: object
+      properties:
+        id: { type: integer }
+        nombre: { type: string }
+        apellido: { type: string }
+        email: { type: string }
+        telefono: { type: string, nullable: true }
+        activo: { type: boolean }
+    TipoServicio:
+      type: object
+      properties:
+        id: { type: integer }
+        nombre: { type: string }
+        descripcion: { type: string, nullable: true }
+        slaHoras: { type: integer }
+        activo: { type: boolean }
+    Solicitud:
+      type: object
+      properties:
+        id: { type: integer }
+        codigo: { type: string, example: 'SOL-2026-0001' }
+        titulo: { type: string }
+        descripcion: { type: string, nullable: true }
+        solicitanteNombre: { type: string }
+        estado: { $ref: '#/components/schemas/Estado' }
+        prioridad: { $ref: '#/components/schemas/Prioridad' }
+        tecnico:
+          nullable: true
+          type: object
+          properties:
+            id: { type: integer }
+            nombreCompleto: { type: string }
+        tipoServicio:
+          type: object
+          properties:
+            id: { type: integer }
+            nombre: { type: string }
+        fechaCreacion: { type: string, format: date-time }
+        fechaActualizacion: { type: string, format: date-time }
+        fechaLimite: { type: string, format: date-time, nullable: true }
+        notasCierre: { type: string, nullable: true }
+    CreateSolicitud:
+      type: object
+      required: [titulo, solicitanteNombre, tipoServicioId]
+      additionalProperties: false
+      properties:
+        titulo: { type: string, minLength: 5, maxLength: 120 }
+        descripcion: { type: string, nullable: true }
+        solicitanteNombre: { type: string, minLength: 3, maxLength: 120 }
+        tecnicoId: { type: integer, nullable: true }
+        tipoServicioId: { type: integer }
+        prioridad: { $ref: '#/components/schemas/Prioridad' }
+        fechaLimite: { type: string, format: date-time, nullable: true }
+    UpdateSolicitud:
+      type: object
+      required: [titulo, descripcion, solicitanteNombre, tecnicoId, tipoServicioId, prioridad, fechaLimite]
+      additionalProperties: false
+      properties:
+        titulo: { type: string, minLength: 5, maxLength: 120 }
+        descripcion: { type: string, nullable: true }
+        solicitanteNombre: { type: string, minLength: 3, maxLength: 120 }
+        tecnicoId: { type: integer, nullable: true }
+        tipoServicioId: { type: integer }
+        prioridad: { $ref: '#/components/schemas/Prioridad' }
+        fechaLimite: { type: string, format: date-time, nullable: true }
+    ProblemDetails:
+      type: object
+      description: RFC 9457 Problem Details
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        traceId: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
