@@ -1,11 +1,16 @@
 import express, { type Express } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { rateLimit } from 'express-rate-limit';
 import { env } from './config/env.js';
+import { mountSwagger } from './docs/swagger.js';
 import { healthRouter } from './modules/health/health.routes.js';
+import { solicitudesRouter } from './modules/solicitudes/solicitudes.routes.js';
+import { tecnicosRouter } from './modules/tecnicos/tecnicos.routes.js';
+import { tiposServicioRouter } from './modules/tipos-servicio/tipos-servicio.routes.js';
 import { notFoundHandler } from './middlewares/notFound.js';
 import { errorHandler } from './middlewares/errorHandler.js';
+import { requestContext } from './middlewares/requestContext.js';
+import { globalLimiter } from './middlewares/rateLimit.js';
 
 /**
  * Construye la aplicacion Express sin escuchar en ningun puerto. Separarla de
@@ -17,22 +22,17 @@ export function createApp(): Express {
 
   app.disable('x-powered-by');
   app.use(helmet());
-  app.use(
-    cors({
-      origin: env.CORS_ORIGIN,
-    }),
-  );
+  app.use(cors({ origin: env.CORS_ORIGIN }));
   app.use(express.json({ limit: '100kb' }));
-  app.use(
-    rateLimit({
-      windowMs: 15 * 60 * 1000,
-      max: env.RATE_LIMIT_MAX,
-      standardHeaders: true,
-      legacyHeaders: false,
-    }),
-  );
+  app.use(requestContext);
+  app.use(globalLimiter);
+
+  mountSwagger(app);
 
   app.use('/api/v1', healthRouter);
+  app.use('/api/v1', solicitudesRouter);
+  app.use('/api/v1', tecnicosRouter);
+  app.use('/api/v1', tiposServicioRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

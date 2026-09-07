@@ -1,23 +1,54 @@
 import type { NextFunction, Request, Response } from 'express';
+import { ZodError } from 'zod';
+import { AppError } from '../shared/AppError.js';
 import { env } from '../config/env.js';
 
-/**
- * Red de seguridad generica. El formato de error completo estilo RFC 9457
- * (con traceId, type, instance) se construye en el bloque del CRUD; aqui solo
- * se evita que un error no controlado filtre el stack trace al cliente.
- */
-export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
-  console.error(err);
+const TYPE_BASE = 'https://api.local/errors';
 
-  const message =
-    env.NODE_ENV === 'production'
-      ? 'Ocurrio un error inesperado'
-      : err instanceof Error
-        ? err.message
-        : 'Ocurrio un error inesperado';
+export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
+  if (err instanceof AppError) {
+    res.status(err.status).json({
+      type: err.type,
+      title: err.title,
+      status: err.status,
+      detail: err.detail,
+      instance: req.originalUrl,
+      traceId: req.traceId,
+      ...(err.errors ? { errors: err.errors } : {}),
+    });
+    return;
+  }
+
+  if (err instanceof ZodError) {
+    res.status(400).json({
+      type: `${TYPE_BASE}/validation-error`,
+      title: 'Los datos enviados no son válidos',
+      status: 400,
+      detail: 'Revise los campos indicados',
+      instance: req.originalUrl,
+      traceId: req.traceId,
+      errors: err.issues.map((issue) => ({
+        field: issue.path.join('.') || '(raíz)',
+        message: issue.message,
+      })),
+    });
+    return;
+  }
+
+  // Error no anticipado: se registra completo en el log (con el traceId para
+  // poder buscarlo) pero nunca se filtra el detalle interno al cliente en produccion.
+  console.error(`[traceId=${req.traceId}]`, err);
 
   res.status(500).json({
+    type: `${TYPE_BASE}/internal-error`,
+    title:
+      env.NODE_ENV === 'production'
+        ? 'Ocurrió un error inesperado'
+        : err instanceof Error
+          ? err.message
+          : 'Ocurrió un error inesperado',
     status: 500,
-    title: message,
+    instance: req.originalUrl,
+    traceId: req.traceId,
   });
 }

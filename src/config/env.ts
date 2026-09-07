@@ -14,6 +14,7 @@ const envSchema = z.object({
     .transform((value) => value.split(',').map((origin) => origin.trim())),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
+  RATE_LIMIT_WRITE_MAX: z.coerce.number().int().positive().default(30),
   DEMO_MODE: z
     .string()
     .default('false')
