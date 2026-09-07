@@ -39,13 +39,15 @@ Qué esperar de cada paso:
 2. **`npm install`** — instala Express, `pg`, Zod, TypeScript, ESLint, Vitest, etc. Termina con
    `added N packages`.
 3. **`cp .env.example .env`** — crea tu copia local de variables de entorno (no se versiona).
-4. **`npm run db:migrate`** — crea la tabla de control `schema_migrations` y aplica los `.sql`
-   pendientes de `db/migrations/`. En este punto del proyecto esa carpeta todavía no tiene
-   migraciones de dominio (technicos/solicitudes se agregan en el siguiente bloque de trabajo),
-   así que verás `[migrate] aplicada: ...` únicamente si hay archivos, o ningún mensaje si la
-   carpeta está vacía — no es un error.
-5. **`npm run db:seed`** — hoy imprime `[seed] sin datos de dominio que sembrar todavia`, porque
-   aún no existen tablas de dominio que sembrar.
+4. **`npm run db:migrate`** — crea la tabla de control `schema_migrations` y aplica en orden
+   `db/migrations/001_schema.sql` (DDL: `tecnico`, `tipo_servicio`, `solicitud`,
+   `solicitud_historial`) y `002_seed.sql`. Verás `[migrate] aplicada: 001_schema.sql` y
+   `[migrate] aplicada: 002_seed.sql`; si vuelves a correrlo, `[migrate] ya aplicada, se omite`
+   para ambos (es idempotente).
+5. **`npm run db:seed`** — los datos ya quedaron insertados por `002_seed.sql` en el paso
+   anterior (el seed vive como migración para que quede versionado como "script de creación").
+   Este comando imprime que no hay nada adicional que sembrar; se deja el script por si en el
+   futuro se separa el seed de las migraciones.
 6. **`npm run dev`** — arranca con recarga en caliente. Debe imprimir:
    `[server] escuchando en http://localhost:3000 (development)`.
 
@@ -65,8 +67,15 @@ curl http://localhost:3000/api/v1/health
 | `DATABASE_URL` | Cadena de conexión a PostgreSQL | `postgresql://pt_user:pt_password@localhost:5432/pt_interactuar_dev` | **Sí** |
 | `CORS_ORIGIN` | Orígenes permitidos, separados por coma, sin espacios | `http://localhost:4200` | **Sí** |
 | `LOG_LEVEL` | Nivel de log (`debug`\|`info`\|`warn`\|`error`\|`silent`) | `debug` | No (default `info`) |
-| `RATE_LIMIT_MAX` | Peticiones máximas por IP cada 15 min antes de `429` | `1000` | No (default `100`) |
+| `RATE_LIMIT_MAX` | Peticiones máximas por IP cada 15 min antes de `429` (todas las rutas) | `1000` | No (default `100`) |
+| `RATE_LIMIT_WRITE_MAX` | Igual, pero solo para `POST`/`PUT`/`PATCH`/`DELETE` (límite más estricto) | `200` | No (default `30`) |
 | `DEMO_MODE` | Habilita el endpoint de reseteo de demo (se agrega en un bloque posterior) | `false` | No (default `false`) |
+
+> Si vas a correr la suite de tests completa contra tu `.env`, sube `RATE_LIMIT_WRITE_MAX` a un
+> número alto (100000, por ejemplo): son ~35 tests y varios hacen POST/PUT/PATCH/DELETE, así que
+> con el default de 30 la suite se dispara su propio 429 antes de terminar. El test dedicado al
+> 429 (`tests/integration/rate-limit.test.ts`) no depende de esta variable: se fija su propio
+> límite bajo internamente para el archivo, sin afectar al resto de la suite.
 
 Toda variable se valida con **Zod** al arrancar (`src/config/env.ts`): si falta una obligatoria o
 tiene un formato inválido, el proceso termina con `process.exit(1)` y un mensaje señalando
@@ -84,6 +93,44 @@ exactamente qué variable falló, en vez de fallar más tarde a mitad de una pet
 | `npm test` | Corre los tests (Vitest + Supertest) |
 | `npm run lint` | ESLint (flat config, reglas type-aware de `typescript-eslint`) |
 | `npm run typecheck` | `tsc --noEmit` sobre todo el proyecto (`src/`, `db/`, `tests/`) |
+
+## Endpoints
+
+Base: `/api/v1`. Documentación interactiva (Swagger UI) en `GET /api/docs` una vez el servidor
+está corriendo; el spec fuente es `src/docs/openapi.yaml`.
+
+| Método | Ruta | Éxito | Errores |
+|---|---|---|---|
+| `GET` | `/health` | `200` (o `503` si la BD no responde) | — |
+| `GET` | `/solicitudes?page&pageSize&q&estado&prioridad&tecnicoId&tipoServicioId&sort` | `200` | `400` |
+| `GET` | `/solicitudes/:id` | `200` | `400`, `404` |
+| `POST` | `/solicitudes` | `201` + header `Location` | `400`, `422`, `429` |
+| `PUT` | `/solicitudes/:id` | `200` | `400`, `404`, `409`, `422`, `429` |
+| `PATCH` | `/solicitudes/:id/estado` | `200` | `400`, `404`, `409`, `429` |
+| `DELETE` | `/solicitudes/:id` | `204` | `404`, `429` |
+| `GET` | `/tecnicos` · `/tecnicos/:id` | `200` | `404` |
+| `DELETE` | `/tecnicos/:id` | `204` | `404`, `409` (tiene solicitudes asociadas), `429` |
+| `GET` | `/tipos-servicio` · `/tipos-servicio/:id` | `200` | `404` |
+
+Reglas de negocio que valen la pena señalar porque no son evidentes solo leyendo la tabla:
+
+- Una solicitud siempre nace en `PENDIENTE`, sin importar si el `POST` ya trae `tecnicoId`: el
+  contrato de creación no acepta `estado` en el body. Para dejarla `ASIGNADA` de una vez hay que
+  crearla y luego hacer el `PATCH /estado`.
+- `PATCH /estado` a `ASIGNADA`/`EN_PROCESO` sin técnico asignado responde **409**, no 400: el
+  body es válido, lo que falla es aplicarlo al estado actual de ese recurso.
+- `PUT` que intenta quitarle el técnico (`tecnicoId: null`) a una solicitud `ASIGNADA`/`EN_PROCESO`
+  también es **409** por la misma razón.
+- `POST`/`PUT` que referencian un `tecnicoId` o `tipoServicioId` inexistente responden **422**
+  (Unprocessable Entity): la sintaxis del body es correcta, la referencia no existe.
+- `DELETE /tecnicos/:id` con solicitudes asociadas responde **409**. No estaba en la tabla de
+  catálogos de solo lectura original — se agregó porque es la única forma de verificar esa regla
+  de negocio vía API (el `ON DELETE RESTRICT` de la base la garantiza de todos modos, con o sin
+  este endpoint).
+
+Ejemplos reales (`curl -i` literal, sin editar) del ciclo completo de una solicitud —
+creación válida, validación fallida, listado filtrado y paginado, conflicto de estado, y
+borrado — están en [`docs/ejemplos-api.md`](./docs/ejemplos-api.md).
 
 ## Tests
 
