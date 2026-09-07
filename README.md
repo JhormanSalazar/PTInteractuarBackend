@@ -45,9 +45,9 @@ Qué esperar de cada paso:
    `[migrate] aplicada: 002_seed.sql`; si vuelves a correrlo, `[migrate] ya aplicada, se omite`
    para ambos (es idempotente).
 5. **`npm run db:seed`** — los datos ya quedaron insertados por `002_seed.sql` en el paso
-   anterior (el seed vive como migración para que quede versionado como "script de creación").
-   Este comando imprime que no hay nada adicional que sembrar; se deja el script por si en el
-   futuro se separa el seed de las migraciones.
+   anterior (el seed vive como migración para que quede versionado y protegido por
+   `schema_migrations`, en vez de insertarse dos veces). Este comando solo confirma cuántas
+   solicitudes hay: `[seed] la base ya tiene 17 solicitudes (sembradas por 002_seed.sql).`
 6. **`npm run dev`** — arranca con recarga en caliente. Debe imprimir:
    `[server] escuchando en http://localhost:3000 (development)`.
 
