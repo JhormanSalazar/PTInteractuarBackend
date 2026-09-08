@@ -1,4 +1,9 @@
-import express, { type Express } from 'express';
+import express, {
+  type Express,
+  type NextFunction,
+  type Request,
+  type Response,
+} from 'express';
 import cors from 'cors';
 import * as helmetModule from 'helmet';
 
@@ -22,6 +27,29 @@ import { errorHandler } from './middlewares/errorHandler.js';
 import { requestContext } from './middlewares/requestContext.js';
 import { globalLimiter } from './middlewares/rateLimit.js';
 
+const parseJson = express.json({ limit: '100kb' });
+
+/**
+ * Envoltura sobre express.json().
+ *
+ * El runtime serverless de Vercel puede consumir el stream de la peticion por
+ * su cuenta y dejar el body ya deserializado en req.body antes de que Express
+ * vea nada. Cuando eso pasa, body-parser se queda esperando datos de un stream
+ * que ya termino y acaba lanzando un error ("request aborted"), que subia al
+ * errorHandler como error no anticipado y salia al cliente como un 500 opaco.
+ * En la practica se traducia en que POST y PUT fallaban en produccion mientras
+ * GET y PATCH funcionaban, sin ninguna pista en la respuesta.
+ *
+ * Si el body ya viene parseado no hay nada que parsear: se sigue de largo.
+ */
+function jsonBodyParser(req: Request, res: Response, next: NextFunction): void {
+  if (req.body !== undefined && req.body !== null) {
+    next();
+    return;
+  }
+  parseJson(req, res, next);
+}
+
 /**
  * Construye la aplicacion Express sin escuchar en ningun puerto. Separarla de
  * server.ts permite que Supertest la monte directamente en los tests de
@@ -33,10 +61,17 @@ export function createApp(): Express {
   // Configuración requerida para entornos cloud / serverless como Vercel
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
+
+  // requestContext va PRIMERO, antes incluso de helmet y del parseo del body.
+  // Antes estaba despues de express.json() y eso dejaba un agujero real: si el
+  // parseo del body fallaba, el error subia al errorHandler con req.traceId
+  // todavia sin asignar, asi que la respuesta 500 salia sin traceId y sin
+  // cabeceras de rate limit — justo el caso mas dificil de diagnosticar en
+  // produccion, y sin nada con que buscarlo en los logs.
+  app.use(requestContext);
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGIN }));
-  app.use(express.json({ limit: '100kb' }));
-  app.use(requestContext);
+  app.use(jsonBodyParser);
   app.use(globalLimiter);
 
   mountSwagger(app);

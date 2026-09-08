@@ -5,6 +5,23 @@ import { env } from '../config/env.js';
 
 const TYPE_BASE = 'https://api.local/errors';
 
+/**
+ * body-parser marca sus errores con un `type` propio (entity.parse.failed,
+ * entity.too.large, request.aborted...) y un status HTTP 4xx. Se reconocen por
+ * esa forma en vez de por instanceof, que obligaria a importar el paquete.
+ */
+function isBodyParserError(err: unknown): err is Error & { status: number; type: string } {
+  if (!(err instanceof Error)) return false;
+  const candidate = err as Error & { status?: unknown; type?: unknown };
+  return (
+    typeof candidate.type === 'string' &&
+    candidate.type.includes('.') &&
+    typeof candidate.status === 'number' &&
+    candidate.status >= 400 &&
+    candidate.status < 500
+  );
+}
+
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction): void {
   if (err instanceof AppError) {
     res.status(err.status).json({
@@ -31,6 +48,30 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
         field: issue.path.join('.') || '(raíz)',
         message: issue.message,
       })),
+    });
+    return;
+  }
+
+  // Errores de body-parser (express.json): JSON mal formado, cuerpo que supera
+  // el limite de 100kb, charset no soportado... Traen su propio status HTTP y
+  // son culpa del cliente, no un fallo interno. Sin esta rama caian en el 500
+  // generico de abajo, que ademas oculta el motivo en produccion: un JSON con
+  // una coma de mas se reportaba como "Ocurrió un error inesperado".
+  if (isBodyParserError(err)) {
+    const status = err.status;
+    res.status(status).json({
+      type: `${TYPE_BASE}/${status === 413 ? 'payload-too-large' : 'invalid-body'}`,
+      title:
+        status === 413
+          ? 'El cuerpo de la petición es demasiado grande'
+          : 'El cuerpo de la petición no se pudo leer',
+      status,
+      detail:
+        status === 413
+          ? 'El cuerpo de la petición supera el límite permitido de 100kb.'
+          : 'Revisa que el cuerpo sea JSON válido y que el encabezado Content-Type sea application/json.',
+      instance: req.originalUrl,
+      traceId: req.traceId,
     });
     return;
   }
