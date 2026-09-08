@@ -29,6 +29,8 @@ import { globalLimiter } from './middlewares/rateLimit.js';
 export function createApp(): Express {
   const app = express();
 
+  // Configuración requerida para entornos cloud / serverless como Vercel
+  app.set('trust proxy', 1);
   app.disable('x-powered-by');
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGIN }));
