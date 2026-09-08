@@ -10,7 +10,12 @@ services:
       POSTGRES_PASSWORD: pt_password
       POSTGRES_DB: pt_interactuar_dev
     ports:
-      - '5432:5432'
+      # 5433 en el host, no 5432: esta maquina tiene un PostgreSQL nativo
+      # (servicio de Windows "postgresql-x64-18") que ya ocupa el 5432 y
+      # competia con el de Docker por las conexiones a localhost:5432,
+      # causando fallos de autenticacion intermitentes contra el usuario
+      # equivocado. El puerto interno del contenedor sigue siendo 5432.
+      - '5433:5432'
     volumes:
       - pt_interactuar_pgdata:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro

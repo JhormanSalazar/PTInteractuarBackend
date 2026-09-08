@@ -10,8 +10,13 @@ datos completo se documentan en el entregable (Word) del proyecto.
 |---|---|---|
 | Node.js | **24.20.0** | `node -v` |
 | npm | **11.19.0** | `npm -v` |
-| Docker Desktop | — | **No instalado en esta máquina al momento de escribir este README.** Instálalo desde https://www.docker.com/products/docker-desktop/ antes de seguir los pasos de abajo. |
+| Docker Desktop | Instalado y verificado | `docker compose version` |
 | Docker Compose | v2 (integrado en Docker Desktop) | `docker compose version` |
+
+> Esta máquina tiene además un **PostgreSQL nativo instalado como servicio de Windows**
+> (`postgresql-x64-18`) que también escucha en el puerto 5432. Por eso el contenedor de este
+> proyecto publica Postgres en el **5433** del host (no el 5432 por defecto) — ver
+> `docker-compose.yml` y la nota en "Problemas frecuentes" más abajo.
 
 > El proyecto fija `"engines": { "node": "24.x" }` en `package.json`. Vercel usa Node 24.x por
 > defecto para nuevos proyectos (verificado en la documentación oficial el 2026-09-07); si tu
@@ -64,7 +69,7 @@ curl http://localhost:3000/api/v1/health
 |---|---|---|---|
 | `NODE_ENV` | Selecciona comportamiento por entorno (SSL de la BD, mensajes de error) | `development` | Sí (tiene default `development`) |
 | `PORT` | Puerto HTTP donde escucha el servidor. Vercel lo ignora y asigna el suyo. | `3000` | No (default `3000`) |
-| `DATABASE_URL` | Cadena de conexión a PostgreSQL | `postgresql://pt_user:pt_password@localhost:5432/pt_interactuar_dev` | **Sí** |
+| `DATABASE_URL` | Cadena de conexión a PostgreSQL | `postgresql://pt_user:pt_password@localhost:5433/pt_interactuar_dev` | **Sí** |
 | `CORS_ORIGIN` | Orígenes permitidos, separados por coma, sin espacios | `http://localhost:4200` | **Sí** |
 | `LOG_LEVEL` | Nivel de log (`debug`\|`info`\|`warn`\|`error`\|`silent`) | `debug` | No (default `info`) |
 | `RATE_LIMIT_MAX` | Peticiones máximas por IP cada 15 min antes de `429` (todas las rutas) | `1000` | No (default `100`) |
@@ -141,7 +146,7 @@ Los tests de integración levantan la app con Supertest **sin abrir un puerto** 
 ```bash
 docker compose up -d
 npm run db:migrate
-DATABASE_URL=postgresql://pt_user:pt_password@localhost:5432/pt_interactuar_test npm test
+DATABASE_URL=postgresql://pt_user:pt_password@localhost:5433/pt_interactuar_test npm test
 ```
 
 > Por qué una base separada para test: así los datos de desarrollo nunca se pisan ni se vacían al
@@ -166,8 +171,16 @@ lo expone.
 
 ## Problemas frecuentes
 
-- **Puerto 5432 ocupado** — otro Postgres local (u otro proyecto) ya lo usa. Cambia el mapeo de
-  puertos en `docker-compose.yml` (por ejemplo `"5433:5432"`) y actualiza `DATABASE_URL`.
+- **`password authentication failed for user "pt_user"` aunque el `.env` esté bien** — casi
+  siempre significa que la conexión a `localhost:5432` está llegando a OTRO Postgres, no al de
+  Docker. Comprueba si tienes un Postgres nativo corriendo como servicio de Windows:
+  `powershell -Command "Get-Service | Where-Object {$_.DisplayName -like '*postgres*'}"`. Si
+  aparece uno, no lo detengas (puede que lo uses para otra cosa) — este proyecto ya está
+  configurado para usar el **5433** en su lugar (`docker-compose.yml` y `DATABASE_URL`), así que
+  simplemente confirma que tu `.env` diga `5433` y no `5432`.
+- **El puerto 5433 también estuviera ocupado** — cambia el mapeo de puertos en
+  `docker-compose.yml` a otro número libre (por ejemplo `"5434:5432"`) y actualiza `DATABASE_URL`
+  para que coincida.
 - **El contenedor no levanta / `docker compose ps` no marca `healthy`** — revisa
   `docker compose logs postgres`. Lo más común es un volumen corrupto de un intento anterior:
   `docker compose down -v` y vuelve a `docker compose up -d` (esto borra los datos locales).
