@@ -69,7 +69,26 @@ export function createApp(): Express {
   // cabeceras de rate limit — justo el caso mas dificil de diagnosticar en
   // produccion, y sin nada con que buscarlo en los logs.
   app.use(requestContext);
-  app.use(helmet());
+  // CSP con 'unsafe-inline' en script/style: swagger-ui-express inyecta un
+  // <script> y <style> inline para inicializar SwaggerUIBundle en /api/docs.
+  // Con la CSP por defecto de Helmet el navegador los bloquea en silencio
+  // (sin 404 ni error visible salvo en consola) y la pagina de docs queda
+  // en blanco.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          // getDefaultDirectives() usa claves kebab-case ("script-src"); un
+          // override en camelCase ("scriptSrc") no la reemplaza, crea una
+          // directiva duplicada y helmet lanza al armar la CSP.
+          ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+          'script-src': ["'self'", "'unsafe-inline'"],
+          'style-src': ["'self'", "'unsafe-inline'"],
+          'img-src': ["'self'", 'data:'],
+        },
+      },
+    }),
+  );
   app.use(cors({ origin: env.CORS_ORIGIN }));
   app.use(jsonBodyParser);
   app.use(globalLimiter);
@@ -88,6 +107,13 @@ export function createApp(): Express {
   if (env.DEMO_MODE) {
     app.use('/api/v1', demoRouter);
   }
+
+  // Health-check de nivel superior: sin esto, GET / cae en notFoundHandler
+  // y Vercel/monitores externos que pegan a la raiz reciben 404 aunque la
+  // API este sana. No reemplaza a /api/v1/health, que si valida la BD.
+  app.get('/', (_req, res) => {
+    res.status(200).json({ status: 'ok', service: 'interactuar-backend', docs: '/api/docs' });
+  });
 
   app.use(notFoundHandler);
   app.use(errorHandler);
