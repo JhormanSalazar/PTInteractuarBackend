@@ -1,6 +1,15 @@
 import express, { type Express } from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
+import * as helmetModule from 'helmet';
+
+// helmet 8 publica el mismo default export para ESM (import) y CJS (require),
+// pero segun el moduleResolution/interop de cada entorno TypeScript infiere
+// tipos distintos para un "import helmet from 'helmet'" (a veces el namespace
+// completo, no invocable). Se toma ".default" explicitamente del namespace
+// (estable en cualquier resolucion) en vez de depender del default import; el
+// cast es redundante en algunos entornos pero necesario en otros (Vercel).
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion, @typescript-eslint/consistent-type-imports
+const helmet = helmetModule.default as unknown as typeof import('helmet').default;
 import { env } from './config/env.js';
 import { mountSwagger } from './docs/swagger.js';
 import { healthRouter } from './modules/health/health.routes.js';
