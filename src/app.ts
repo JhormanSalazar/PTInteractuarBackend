@@ -16,6 +16,7 @@ import { healthRouter } from './modules/health/health.routes.js';
 import { solicitudesRouter } from './modules/solicitudes/solicitudes.routes.js';
 import { tecnicosRouter } from './modules/tecnicos/tecnicos.routes.js';
 import { tiposServicioRouter } from './modules/tipos-servicio/tipos-servicio.routes.js';
+import { demoRouter } from './modules/demo/demo.routes.js';
 import { notFoundHandler } from './middlewares/notFound.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { requestContext } from './middlewares/requestContext.js';
@@ -44,6 +45,14 @@ export function createApp(): Express {
   app.use('/api/v1', solicitudesRouter);
   app.use('/api/v1', tecnicosRouter);
   app.use('/api/v1', tiposServicioRouter);
+
+  // El endpoint de reset solo existe cuando la demo esta activa. Montarlo de
+  // forma condicional (en vez de comprobar el flag dentro del handler) hace que
+  // con DEMO_MODE=false caiga en notFoundHandler y devuelva exactamente el
+  // mismo 404 que cualquier ruta inexistente, sin delatar que la ruta existe.
+  if (env.DEMO_MODE) {
+    app.use('/api/v1', demoRouter);
+  }
 
   app.use(notFoundHandler);
   app.use(errorHandler);

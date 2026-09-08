@@ -13,6 +13,7 @@ tags:
   - name: tecnicos
   - name: tipos-servicio
   - name: health
+  - name: demo
 
 paths:
   /health:
@@ -218,6 +219,43 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/TipoServicio' }
         '404': { description: No existe }
+
+  /demo/reset:
+    post:
+      tags: [demo]
+      summary: Restaurar los datos de demostración
+      description: >
+        Borra y vuelve a sembrar los datos de ejemplo dentro de una única
+        transacción, para que la demo pública no quede vacía después de que
+        alguien pruebe el CRUD. Sólo existe cuando la variable de entorno
+        DEMO_MODE es true; con DEMO_MODE=false la ruta no está montada y
+        responde 404 como cualquier ruta inexistente. No requiere token:
+        el botón que lo invoca vive en el bundle público de Angular, así que
+        un token ahí sería visible para cualquiera. La protección es
+        DEMO_MODE más un rate limit propio y estricto (RATE_LIMIT_DEMO_MAX,
+        por defecto 3 peticiones cada 15 minutos).
+      responses:
+        '200':
+          description: Datos restaurados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensaje: { type: string, example: Datos de demostración restaurados. }
+                  tecnicos: { type: integer, example: 5 }
+                  tiposServicio: { type: integer, example: 6 }
+                  solicitudes: { type: integer, example: 17 }
+        '404':
+          description: DEMO_MODE está desactivado, la ruta no existe
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+        '429':
+          description: Se superó el límite de reseteos por ventana
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
 
 components:
   schemas:

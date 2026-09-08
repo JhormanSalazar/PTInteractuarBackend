@@ -74,7 +74,8 @@ curl http://localhost:3000/api/v1/health
 | `LOG_LEVEL` | Nivel de log (`debug`\|`info`\|`warn`\|`error`\|`silent`) | `debug` | No (default `info`) |
 | `RATE_LIMIT_MAX` | Peticiones máximas por IP cada 15 min antes de `429` (todas las rutas) | `1000` | No (default `100`) |
 | `RATE_LIMIT_WRITE_MAX` | Igual, pero solo para `POST`/`PUT`/`PATCH`/`DELETE` (límite más estricto) | `200` | No (default `30`) |
-| `DEMO_MODE` | Habilita el endpoint de reseteo de demo (se agrega en un bloque posterior) | `false` | No (default `false`) |
+| `RATE_LIMIT_DEMO_MAX` | Igual, pero solo para `POST /demo/reset` (el límite más estricto de todos) | `50` | No (default `3`) |
+| `DEMO_MODE` | Monta el endpoint `POST /demo/reset`. En `false` la ruta no existe y responde `404` | `true` | No (default `false`) |
 
 > Si vas a correr la suite de tests completa contra tu `.env`, sube `RATE_LIMIT_WRITE_MAX` a un
 > número alto (100000, por ejemplo): son ~35 tests y varios hacen POST/PUT/PATCH/DELETE, así que
@@ -116,6 +117,20 @@ está corriendo; el spec fuente es `src/docs/openapi.yaml`.
 | `GET` | `/tecnicos` · `/tecnicos/:id` | `200` | `404` |
 | `DELETE` | `/tecnicos/:id` | `204` | `404`, `409` (tiene solicitudes asociadas), `429` |
 | `GET` | `/tipos-servicio` · `/tipos-servicio/:id` | `200` | `404` |
+| `POST` | `/demo/reset` (solo con `DEMO_MODE=true`) | `200` | `404` (demo desactivada), `429` |
+
+### Reseteo de la demo
+
+`POST /api/v1/demo/reset` borra y vuelve a sembrar los datos de ejemplo **dentro de una única
+transacción**: o queda el dataset completo, o no cambia nada. Existe para que la demo pública no
+quede vacía cuando alguien prueba el CRUD y borra solicitudes.
+
+No lleva token en cabecera, y es una decisión consciente: el único cliente que lo invoca es un
+botón del bundle de Angular, que es público y descargable, así que cualquier token incrustado ahí
+sería visible para todo el mundo — seguridad aparente, no real. La protección efectiva es la
+combinación de `DEMO_MODE` (con la variable en `false` la ruta ni siquiera se monta) y
+`RATE_LIMIT_DEMO_MAX`, un límite propio y mucho más bajo que el de escrituras normales. El alcance
+del daño posible está acotado a datos ficticios de demostración.
 
 Reglas de negocio que valen la pena señalar porque no son evidentes solo leyendo la tabla:
 
@@ -145,8 +160,19 @@ Los tests de integración levantan la app con Supertest **sin abrir un puerto** 
 
 ```bash
 docker compose up -d
-npm run db:migrate
+# El esquema hay que aplicarlo EN LA BASE DE TEST. `npm run db:migrate` a secas usa el
+# DATABASE_URL del .env, que apunta a la base de desarrollo: si te saltas este paso, los
+# tests fallan con `relation "solicitud_historial" does not exist`.
+DATABASE_URL=postgresql://pt_user:pt_password@localhost:5433/pt_interactuar_test npm run db:migrate
 DATABASE_URL=postgresql://pt_user:pt_password@localhost:5433/pt_interactuar_test npm test
+```
+
+En PowerShell, donde no existe el prefijo `VAR=valor comando`:
+
+```powershell
+$env:DATABASE_URL="postgresql://pt_user:pt_password@localhost:5433/pt_interactuar_test"
+npm run db:migrate
+npm test
 ```
 
 > Por qué una base separada para test: así los datos de desarrollo nunca se pisan ni se vacían al

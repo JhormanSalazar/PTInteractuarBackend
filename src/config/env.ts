@@ -15,6 +15,9 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   RATE_LIMIT_WRITE_MAX: z.coerce.number().int().positive().default(30),
+  // El reset de la demo borra y resiembra toda la base: se le da su propio
+  // limite, mucho mas bajo que el de escrituras normales.
+  RATE_LIMIT_DEMO_MAX: z.coerce.number().int().positive().default(3),
   DEMO_MODE: z
     .string()
     .default('false')

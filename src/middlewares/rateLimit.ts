@@ -30,3 +30,16 @@ export const writeLimiter = rateLimit({
   legacyHeaders: false,
   handler: tooManyRequests,
 });
+
+/** Límite propio y mucho más estricto para POST /demo/reset. Ese endpoint no
+ * lleva token (el botón que lo llama vive en un bundle público), así que el
+ * rate limit es, junto con DEMO_MODE, la única barrera real: restaurar la demo
+ * es una acción puntual, nadie necesita hacerla más de un puñado de veces por
+ * ventana, y así no se puede usar para machacar la base de datos. */
+export const demoLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: env.RATE_LIMIT_DEMO_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: tooManyRequests,
+});
