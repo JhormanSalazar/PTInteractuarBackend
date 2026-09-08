@@ -195,9 +195,13 @@ lo expone.
 
 ## URLs de producción
 
-- Backend: _pendiente de despliegue — se completa en el siguiente bloque de trabajo una vez
-  creado el proyecto en Neon y vinculado el proyecto en Vercel (ver "Cosas por configurar a mano"
-  en el reporte de este bloque)._
+- Backend: <https://interactuar-backend.vercel.app>
+- Documentación interactiva (Swagger UI): <https://interactuar-backend.vercel.app/api/docs>
+- Health check: <https://interactuar-backend.vercel.app/api/v1/health>
+- Frontend que lo consume: <https://interactuar-frontend.vercel.app>
+
+La API no expone ninguna ruta en `/`: la raíz responde un 404 en formato Problem Details, que es
+el comportamiento esperado. Todos los endpoints cuelgan de `/api/v1`.
 
 ## Decisión fuera del plan original
 
