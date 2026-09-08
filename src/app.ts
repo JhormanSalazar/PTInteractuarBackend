@@ -1,6 +1,12 @@
 import express, { type Express } from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
+// helmet declara su "types" fuera del mapa "exports" (solo import/require ahi
+// dentro); bajo moduleResolution NodeNext eso resuelve de forma inconsistente
+// segun el entorno -- funcionaba en local pero en el build de Vercel (Linux)
+// TypeScript resolvia el namespace completo en vez del default exportado
+// ("This expression is not callable"). El import-interop de CJS evita la
+// ambiguedad de raiz en vez de depender de la resolucion del default de ESM.
+import helmet = require('helmet');
 import { env } from './config/env.js';
 import { mountSwagger } from './docs/swagger.js';
 import { healthRouter } from './modules/health/health.routes.js';
