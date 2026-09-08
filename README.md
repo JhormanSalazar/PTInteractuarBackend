@@ -203,6 +203,7 @@ lo expone.
 
 El plan (`docs/PLAN-DESARROLLO.md`) ubicaba el `Pool` de `pg` en `db/pool.ts`. Se movió a
 `src/config/db.ts` para que quede junto al resto de la configuración y para no dejar ninguna duda
-sobre qué archivos entran al bundle que Vercel arma a partir de `src/app.ts`; `db/` queda
-reservado para los `.sql` de migración y el runner (`db/migrate.ts`, `db/seed.ts`), que se
-ejecutan como script independiente vía `tsx` y nunca forman parte de la función serverless.
+sobre qué archivos entran al bundle que Vercel arma a partir de `src/app.ts` (reexportado como
+función serverless en `api/index.ts`, ver `vercel.json`); `db/` queda reservado para los `.sql`
+de migración y el runner (`db/migrate.ts`, `db/seed.ts`), que se ejecutan como script
+independiente vía `tsx` y nunca forman parte de la función serverless.
